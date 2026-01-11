@@ -1,0 +1,6 @@
+(library
+ (public_name fpga-2025)
+ (name fpga_2025_lib)
+ (libraries core hardcaml)
+ (preprocess
+   (pps ppx_hardcaml ppx_jane)))

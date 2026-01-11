@@ -1,0 +1,8 @@
+(library
+ (name fpga_2025_test)
+ (libraries
+   hardcaml
+   fpga_2025_lib)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane ppx_hardcaml)))
