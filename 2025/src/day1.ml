@@ -30,8 +30,9 @@ module States = struct
     type t =
         | SignByte
         | ReadNumber
-        | TxByte
-        | WaitForReady
+        | TxPart1
+        | TxPart2
+        | Done
     [@@deriving sexp_of, compare, enumerate]
 end
 
@@ -61,15 +62,35 @@ let apply_rotation n rot =
         mux2 (msb tmp) (tmp +:. 100) tmp in
     modulo_100 (n +: rot)
 
+let get_nibble signal nibble =
+    let total_nibbles = Int.shift_right (width signal) 2 in
+    let shift_by_nibbles = (of_int ~width:(width nibble) (total_nibbles - 1)) -: nibble in
+    let total_shift_amount = sll shift_by_nibbles 2 in
+    log_shift srl signal total_shift_amount
+
+let to_hex_digit nibble =
+    let nibble_byte = uresize nibble 8 in
+    mux2 (nibble <:. 10)
+            (nibble_byte +:. (Char.code '0'))
+            (nibble_byte +:. ((Char.code 'A' - 10)))
+
+let get_hex_digit n digit = 
+    let nibble = get_nibble n digit in
+    to_hex_digit (sel_bottom nibble 4)
+
 let create (i : _ I.t) = 
     (* multiplying by 10 is the same multiply by 8 and then adding the it multiplied twice *)
     let mul_10 (n : Reg_spec.signal) = (sll n 3) +: (sll n 1) in
-    (* The magic numbers are taken from godbolt to prevent me from having to figure it out myself *)
     let r_sync = Reg_spec.create ~clock:i.clock ~clear:i.clear () in
     let sign = Always.Variable.reg ~enable:vdd ~width:1 r_sync in
     let num = Always.Variable.reg ~enable:vdd ~width:10 r_sync in
     let acc = Always.Variable.reg ~enable:vdd ~width:32 r_sync in
     let sm = Always.State_machine.create (module States) ~enable:vdd r_sync in
+    let done_wire = Always.Variable.wire ~default:gnd in 
+    let tx_wire = Always.Variable.wire ~default:gnd in
+    let data = Always.Variable.reg ~enable:vdd ~width:8 r_sync in
+    let part1_result = Always.Variable.reg ~enable:vdd ~width:32 r_sync in
+    let hex_digit = Always.Variable.reg ~enable:vdd ~width:3 r_sync in
     Always.(
         compile [
             sm.switch [
@@ -88,10 +109,20 @@ let create (i : _ I.t) =
                     States.ReadNumber,
                     [
                         if_ i.ready_rx [
-                            if_ (i.data ==: (of_char '\n')) [
+                            if_ (i.data ==: (of_char '\n') ||: i.data ==: (of_char '\x00')) [
                                 (* Do the computation! *)
                                 (* add (or subtract) the current value to to the current accumulator *)
-                                acc <-- apply_rotation num.value (mux2 sign.value num.value (negate num.value))
+                                acc <-- apply_rotation num.value (mux2 sign.value num.value (negate num.value));
+
+                                if_ (acc.value ==:. 0) [
+                                    part1_result <-- part1_result.value +:. 1
+                                ] [];
+
+                                if_ (i.data ==: (of_char '\x00')) [
+                                    sm.set_next States.Done
+                                ] [
+                                    sm.set_next States.SignByte
+                                ]
                             ] [
                                 (* continue to gather the number! *)
                                 num <-- (mul_10 num.value) +: (i.data -: (of_char '0')); 
@@ -99,8 +130,34 @@ let create (i : _ I.t) =
                         ]
                         []
                     ]
+                );
+                (
+                    States.TxPart1,
+                    [
+                        if_ (i.ready_tx) [
+                            (let nibble = get_nibble part1_result.value hex_digit.value in
+                            data <-- to_hex_digit (sel_bottom nibble 4));
+                            tx_wire <-- vdd;
+                            if_ (hex_digit.value ==: ones (width hex_digit.value)) [
+                                sm.set_next States.Done 
+                            ][
+                                hex_digit <-- hex_digit.value +:. 1
+                            ]
+                        ] []
+                    ]
+                );
+                (
+                    States.Done,
+                    [
+                        done_wire <-- vdd
+                    ]
                 )
             ]
         ]
     );
+    {
+        O.done_ = done_wire.value;
+        O.tx = tx_wire.value;
+        O.data = data.value
+    }
 

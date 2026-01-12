@@ -25,6 +25,21 @@ let %test "Apply large positive rotation test" = rotation_test 0 220
 
 let %test "Apply large negative rotation test" = rotation_test 10 (-940)
 
+let %test "Get hex digit of 32bit integer" =
+    let n = 0xABCDEF01 in
+    let result = Day1.get_hex_digit (Signal.of_int ~width:32 n) (Signal.of_int ~width:32 0) in 
+    Char.equal (Signal.to_char result) 'A'
+
+let %test "Get hex digit of 32bit integer" =
+    let n = 0xABCDEF01 in
+    let result = Day1.get_hex_digit (Signal.of_int ~width:32 n) (Signal.of_int ~width:32 1) in 
+    Char.equal (Signal.to_char result) 'B'
+
+let %test "Get hex digit of 32bit integer" =
+    let n = 0xABCDEF01 in
+    let result = Day1.get_hex_digit (Signal.of_int ~width:32 n) (Signal.of_int ~width:32 7) in 
+    Char.equal (Signal.to_char result) '1'
+
 (* let%test "test" =  *)
 (*     let sim = Sim.create Day1.create in *)
 (*     let inputs : _ Day1.I.t = Cyclesim.inputs sim in *)
