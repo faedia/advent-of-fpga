@@ -21,17 +21,21 @@ module O = struct
         (* indicates that a byte is being output for tx *)
         tx : 'a;
         (* this outputs the result byte by byte once computation is done! *)
-        data : 'a[@bits 8];
+        out_data : 'a[@bits 8];
+        acc : 'a[@bits 10];
+        num : 'a[@bits 10];
+        sign : 'a;
     }
     [@@deriving hardcaml]
 end
 
 module States = struct
     type t =
+        | Start
         | SignByte
         | ReadNumber
         | TxPart1
-        | TxPart2
+        (* | TxPart2 *)
         | Done
     [@@deriving sexp_of, compare, enumerate]
 end
@@ -54,7 +58,7 @@ let apply_rotation n rot =
         let div = tmp_a +: tmp_b in
         (* once we have the division we can then multiply by 100 and see the difference is the remainder *)
         let lower_bound = sresize (div *+ (of_int ~width:32 100)) 32 in
-        n -: lower_bound
+        n -: sresize lower_bound (width n) 
         in
     let modulo_100 n =
         let tmp = mod_100 n in
@@ -64,7 +68,7 @@ let apply_rotation n rot =
 
 let get_nibble signal nibble =
     let total_nibbles = Int.shift_right (width signal) 2 in
-    let shift_by_nibbles = (of_int ~width:(width nibble) (total_nibbles - 1)) -: nibble in
+    let shift_by_nibbles = (of_int ~width:(width signal) (total_nibbles - 1)) -: (uresize nibble (width signal)) in
     let total_shift_amount = sll shift_by_nibbles 2 in
     log_shift srl signal total_shift_amount
 
@@ -84,7 +88,7 @@ let create (i : _ I.t) =
     let r_sync = Reg_spec.create ~clock:i.clock ~clear:i.clear () in
     let sign = Always.Variable.reg ~enable:vdd ~width:1 r_sync in
     let num = Always.Variable.reg ~enable:vdd ~width:10 r_sync in
-    let acc = Always.Variable.reg ~enable:vdd ~width:32 r_sync in
+    let acc = Always.Variable.reg ~enable:vdd ~width:10 r_sync in
     let sm = Always.State_machine.create (module States) ~enable:vdd r_sync in
     let done_wire = Always.Variable.wire ~default:gnd in 
     let tx_wire = Always.Variable.wire ~default:gnd in
@@ -94,6 +98,15 @@ let create (i : _ I.t) =
     Always.(
         compile [
             sm.switch [
+                (
+                    States.Start,
+                    [
+                        sign <-- gnd;
+                        num <-- zero 10;
+                        acc <-- Signal.of_int ~width:10 50;
+                        sm.set_next States.SignByte
+                    ]
+                );
                 (
                     States.SignByte,
                     [
@@ -109,23 +122,24 @@ let create (i : _ I.t) =
                     States.ReadNumber,
                     [
                         if_ i.ready_rx [
-                            if_ (i.data ==: (of_char '\n') ||: i.data ==: (of_char '\x00')) [
+                            if_ ((i.data ==: (of_char '\n')) ||: (i.data ==: (of_char '\x00'))) [
                                 (* Do the computation! *)
                                 (* add (or subtract) the current value to to the current accumulator *)
-                                acc <-- apply_rotation num.value (mux2 sign.value num.value (negate num.value));
+                                acc <-- apply_rotation acc.value (mux2 sign.value num.value (negate num.value));
 
                                 if_ (acc.value ==:. 0) [
                                     part1_result <-- part1_result.value +:. 1
                                 ] [];
 
                                 if_ (i.data ==: (of_char '\x00')) [
-                                    sm.set_next States.Done
+                                    sm.set_next States.TxPart1;
+                                    hex_digit <-- zero 3
                                 ] [
                                     sm.set_next States.SignByte
                                 ]
                             ] [
                                 (* continue to gather the number! *)
-                                num <-- (mul_10 num.value) +: (i.data -: (of_char '0')); 
+                                num <-- (mul_10 num.value) +: (uresize (i.data -: (of_char '0')) 10); 
                             ]
                         ]
                         []
@@ -135,8 +149,7 @@ let create (i : _ I.t) =
                     States.TxPart1,
                     [
                         if_ (i.ready_tx) [
-                            (let nibble = get_nibble part1_result.value hex_digit.value in
-                            data <-- to_hex_digit (sel_bottom nibble 4));
+                            data <-- get_hex_digit part1_result.value hex_digit.value;
                             tx_wire <-- vdd;
                             if_ (hex_digit.value ==: ones (width hex_digit.value)) [
                                 sm.set_next States.Done 
@@ -158,6 +171,9 @@ let create (i : _ I.t) =
     {
         O.done_ = done_wire.value;
         O.tx = tx_wire.value;
-        O.data = data.value
+        O.out_data = data.value;
+        O.acc = acc.value;
+        O.num = num.value;
+        O.sign = sign.value;
     }
 
