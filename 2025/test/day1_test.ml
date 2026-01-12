@@ -66,17 +66,22 @@ L82 |} in
         inputs.ready_tx := Bits.vdd;
         inputs.data := Bits.of_char c;
         Cyclesim.cycle sim; 
-        (* print_string "sign: "; *)
-        (* print_int (Bits.to_int outputs.sign.contents); *)
-        (* print_endline ""; *)
+        (* if (Bits.to_int outputs.state.contents) == 1 then( *)
+        (*     print_string "sign: "; *)
+        (*     print_int (Bits.to_int outputs.sign.contents); *)
+        (*     print_endline ""; *)
         (**)
-        (* print_string "num: "; *)
-        (* print_int (Bits.to_int outputs.num.contents); *)
-        (* print_endline ""; *)
+        (*     print_string "num: "; *)
+        (*     print_int (Bits.to_int outputs.num.contents); *)
+        (*     print_endline ""; *)
         (**)
-        (* print_string "acc: "; *)
-        (* print_int (Bits.to_int outputs.acc.contents); *)
-        (* print_endline ""; *)
+        (*     print_string "acc: "; *)
+        (*     print_int (Bits.to_int outputs.acc.contents); *)
+        (*     print_endline ""; *)
+        (**)
+        (*     print_string "result: "; *)
+        (*     print_int (Bits.to_int outputs.result.contents); *)
+        (*     print_endline "";) *)
     in
     (* Step for start state *)
     step '\x00';
@@ -91,20 +96,3 @@ L82 |} in
     done;
     false
 
-(* let%test "test" =  *)
-(*     let sim = Sim.create Day1.create in *)
-(*     let inputs : _ Day1.I.t = Cyclesim.inputs sim in *)
-(*     let outputs : _ Day1.O.t = Cyclesim.outputs sim in *)
-(*     let step (n : int)= *)
-(*         inputs.clear := Bits.gnd; *)
-(*         inputs.ready := Bits.gnd; *)
-(*         inputs.clock := Bits.gnd; *)
-(*         inputs.data  := Bits.of_int ~width:8 n; *)
-(*         Cyclesim.cycle sim; *)
-(*         inputs.ready := Bits.vdd; *)
-(*         inputs.clock := Bits.vdd; *)
-(*         Cyclesim.cycle sim *)
-(*     in *)
-(*     (step 5); *)
-(*     (step 100); *)
-(*     Bits.equal outputs.result.contents (Bits.of_int ~width:32 105) *)

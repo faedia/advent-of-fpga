@@ -22,9 +22,11 @@ module O = struct
         tx : 'a;
         (* this outputs the result byte by byte once computation is done! *)
         out_data : 'a[@bits 8];
-        acc : 'a[@bits 10];
-        num : 'a[@bits 10];
+        acc : 'a[@bits 32];
+        num : 'a[@bits 32];
         sign : 'a;
+        result : 'a[@bits 32];
+        state : 'a[@bits 8];
     }
     [@@deriving hardcaml]
 end
@@ -87,8 +89,8 @@ let create (i : _ I.t) =
     let mul_10 (n : Reg_spec.signal) = (sll n 3) +: (sll n 1) in
     let r_sync = Reg_spec.create ~clock:i.clock ~clear:i.clear () in
     let sign = Always.Variable.reg ~enable:vdd ~width:1 r_sync in
-    let num = Always.Variable.reg ~enable:vdd ~width:10 r_sync in
-    let acc = Always.Variable.reg ~enable:vdd ~width:10 r_sync in
+    let num = Always.Variable.reg ~enable:vdd ~width:32 r_sync in
+    let acc = Always.Variable.reg ~enable:vdd ~width:32 r_sync in
     let sm = Always.State_machine.create (module States) ~enable:vdd r_sync in
     let done_wire = Always.Variable.wire ~default:gnd in 
     let tx_wire = Always.Variable.wire ~default:gnd in
@@ -102,8 +104,8 @@ let create (i : _ I.t) =
                     States.Start,
                     [
                         sign <-- gnd;
-                        num <-- zero 10;
-                        acc <-- Signal.of_int ~width:10 50;
+                        num <-- zero 32;
+                        acc <-- Signal.of_int ~width:32 50;
                         sm.set_next States.SignByte
                     ]
                 );
@@ -112,7 +114,7 @@ let create (i : _ I.t) =
                     [
                         if_ i.ready_rx [
                             sign <-- (i.data ==: (of_char 'R'));
-                            num <-- zero 10;
+                            num <-- zero 32;
                             sm.set_next States.ReadNumber
                         ]
                         []
@@ -139,7 +141,7 @@ let create (i : _ I.t) =
                                 ]
                             ] [
                                 (* continue to gather the number! *)
-                                num <-- (mul_10 num.value) +: (uresize (i.data -: (of_char '0')) 10); 
+                                num <-- (mul_10 num.value) +: (uresize (i.data -: (of_char '0')) 32); 
                             ]
                         ]
                         []
@@ -175,5 +177,7 @@ let create (i : _ I.t) =
         O.acc = acc.value;
         O.num = num.value;
         O.sign = sign.value;
+        O.result = part1_result.value;
+        O.state = uresize sm.current 8;
     }
 
