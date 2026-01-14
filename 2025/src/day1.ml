@@ -110,7 +110,7 @@ let print_value ready input (index : Always.Variable.t) out_data tx_wire on_done
         []
     )
 
-let create (i : _ I.t) = 
+let create (_ : Hardcaml.Scope.t) (i : _ I.t) = 
     let r_sync = Reg_spec.create ~clock:i.clock ~clear:i.clear () in
     let sm = Always.State_machine.create (module States) ~enable:vdd r_sync in
 

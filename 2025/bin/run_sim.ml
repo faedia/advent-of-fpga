@@ -11,7 +11,8 @@ let () =
     if Array.length (Sys.get_argv ()) <> 2 then exit 1;
     let input_file = Array.get (Sys.get_argv ()) 1 in
     let data = In_channel.read_all input_file in
-    let sim = Sim.create Day1.create in
+    let scope = Scope.create ~flatten_design:true () in
+    let sim = Sim.create (Day1.create scope) in
     let inputs = Cyclesim.inputs sim in
     let outputs = Cyclesim.outputs sim in
     let step c =
