@@ -1,0 +1,9 @@
+(executable
+  (name make_rtl)
+  (modules make_rtl)
+  (libraries core core_unix.command_unix fpga_2025_lib))
+
+(executable
+  (name run_sim)
+  (modules run_sim)
+  (libraries core core_unix.command_unix fpga_2025_lib))
